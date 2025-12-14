@@ -18,5 +18,8 @@ cleanup() [robiony poza u¿ytkownikiem]*/
 
 int main() 
 {
+	Cache<std::string, std::string> cache(3);
+	cache.Put("1", "one", 5000);
+	cache.Put("2", "two", 10000);
 	return 0;
 }

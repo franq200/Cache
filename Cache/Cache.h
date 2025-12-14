@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <algorithm>
+#include <mutex>
 
 template < typename Key, typename Value>
 class Cache
@@ -11,6 +12,7 @@ class Cache
 public:
 	Cache(size_t maxSize);
 	Cache() = default;
+	~Cache();
 	void Put(const Key& key, const Value& value, size_t ttlInMs = 15000);
 	const Value& Get(const Key& key);
 	bool Contains(const Key& key) const;
@@ -30,11 +32,22 @@ private:
 	std::unordered_map<Key, CacheItem> data_;
 	const size_t maxSize_ = 64;
 	std::thread thread_;
+	std::mutex mutex_;
 };
+
+template<typename Key, typename Value>
+inline Cache<Key, Value>::~Cache()
+{
+	if (thread_.joinable())
+	{
+		thread_.join();
+	}
+}
 
 template<typename Key, typename Value>
 inline void Cache<Key, Value>::Put(const Key& key, const Value& value, size_t ttlInMs)
 {
+	mutex_.lock();
 	if (data_.find(key) == data_.end())
 	{
 		if (data_.size() >= maxSize_)
@@ -54,11 +67,13 @@ template<typename Key, typename Value>
 inline Cache<Key, Value>::Cache(size_t maxSize) :
 	maxSize_(maxSize)
 {
+	thread_ = std::thread(&Cache<Key, Value>::CleanupExpiredItems, this);
 }
 
 template<typename Key, typename Value>
 inline const Value& Cache<Key, Value>::Get(const Key& key)
 {
+	mutex_.lock();
 	auto it = data_.find(key);
 	if (it == data_.end())
 	{
@@ -71,21 +86,16 @@ inline const Value& Cache<Key, Value>::Get(const Key& key)
 template<typename Key, typename Value>
 inline bool Cache<Key, Value>::Contains(const Key& key) const
 {
+	mutex_.lock();
 	return data_.find(key) != data_.end();
 }
 
 template<typename Key, typename Value>
 inline void Cache<Key, Value>::RemoveOldestValue()
 {
+	mutex_.lock();
 	auto oldest = data_.begin();
-	for (auto& it : data_)
-	{
-		if (it->second.timestamp > oldest->second.timestamp)
-		{
-			oldest = it;
-		}
-	}
-	data_.erase(oldest);
+	data_.erase(std::find_if(data_.begin(), data_.end(), [oldest](const auto& el) {return el.second.timestamp < oldest->second.timestamp; }));
 }
 
 template<typename Key, typename Value>
@@ -94,6 +104,7 @@ inline void Cache<Key, Value>::CleanupExpiredItems()
 	while (true)
 	{
 		auto now = std::chrono::steady_clock::now();
+		mutex_.lock();
 		data_.erase(std::remove_if(data_.begin(), data_.end(), [now](const auto& el) {return now >= el.second.expiryTime; }), data_.end());
 	}
 }
