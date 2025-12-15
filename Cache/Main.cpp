@@ -14,12 +14,13 @@ put()
 get()
 contains()
 cleanup() [robiony poza u¿ytkownikiem]*/
+#include <string>
 #include "Cache.h"
 
 int main() 
 {
 	Cache<std::string, std::string> cache(3);
-	cache.Put("1", "one", 5000);
-	cache.Put("2", "two", 10000);
+	cache.Put("key1", "value1", 5000); // TTL 5 seconds
+	cache.Put("key2", "value2", 10000); // TTL 10 seconds
 	return 0;
 }

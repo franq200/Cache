@@ -47,7 +47,7 @@ inline Cache<Key, Value>::~Cache()
 template<typename Key, typename Value>
 inline void Cache<Key, Value>::Put(const Key& key, const Value& value, size_t ttlInMs)
 {
-	mutex_.lock();
+	std::unique_lock<std::mutex> lock(mutex_);
 	if (data_.find(key) == data_.end())
 	{
 		if (data_.size() >= maxSize_)
@@ -73,7 +73,7 @@ inline Cache<Key, Value>::Cache(size_t maxSize) :
 template<typename Key, typename Value>
 inline const Value& Cache<Key, Value>::Get(const Key& key)
 {
-	mutex_.lock();
+	std::unique_lock<std::mutex> lock(mutex_);
 	auto it = data_.find(key);
 	if (it == data_.end())
 	{
@@ -86,16 +86,26 @@ inline const Value& Cache<Key, Value>::Get(const Key& key)
 template<typename Key, typename Value>
 inline bool Cache<Key, Value>::Contains(const Key& key) const
 {
-	mutex_.lock();
+	std::unique_lock<std::mutex> lock(mutex_);
 	return data_.find(key) != data_.end();
 }
 
 template<typename Key, typename Value>
 inline void Cache<Key, Value>::RemoveOldestValue()
 {
-	mutex_.lock();
+	if (data_.empty())
+	{
+		return;
+	}
 	auto oldest = data_.begin();
-	data_.erase(std::find_if(data_.begin(), data_.end(), [oldest](const auto& el) {return el.second.timestamp < oldest->second.timestamp; }));
+	for (auto it = data_.begin(); it != data_.end(); it++)
+	{
+		if (it->second.timestamp < oldest->second.timestamp)
+		{
+			oldest = it;
+		}
+	}
+	data_.erase(oldest);
 }
 
 template<typename Key, typename Value>
@@ -104,7 +114,17 @@ inline void Cache<Key, Value>::CleanupExpiredItems()
 	while (true)
 	{
 		auto now = std::chrono::steady_clock::now();
-		mutex_.lock();
-		data_.erase(std::remove_if(data_.begin(), data_.end(), [now](const auto& el) {return now >= el.second.expiryTime; }), data_.end());
+		std::unique_lock<std::mutex> lock(mutex_);
+		for (auto it = data_.begin(); it != data_.end();)
+		{
+			if (now >= it->second.expiryTime)
+			{
+				it = data_.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
 	}
 }
