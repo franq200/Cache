@@ -48,18 +48,11 @@ template<typename Key, typename Value>
 inline void Cache<Key, Value>::Put(const Key& key, const Value& value, size_t ttlInMs)
 {
 	std::unique_lock<std::mutex> lock(mutex_);
-	if (data_.find(key) == data_.end())
+	auto now = std::chrono::steady_clock::now();
+	data_.try_emplace(key, CacheItem{ value, now, now + std::chrono::milliseconds(ttlInMs) });
+	if (data_.size() > maxSize_)
 	{
-		if (data_.size() >= maxSize_)
-		{
-			RemoveOldestValue();
-		}
-		auto now = std::chrono::steady_clock::now();
-		data_[key] = CacheItem{ value , now , now + std::chrono::milliseconds(ttlInMs)};
-	}
-	else
-	{
-		throw std::exception("Key already exists in cache");
+		RemoveOldestValue();
 	}
 }
 

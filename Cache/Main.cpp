@@ -21,6 +21,5 @@ int main()
 {
 	Cache<std::string, std::string> cache(3);
 	cache.Put("key1", "value1", 5000); // TTL 5 seconds
-	cache.Put("key2", "value2", 10000); // TTL 10 seconds
 	return 0;
 }
