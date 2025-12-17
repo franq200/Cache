@@ -1,17 +1,18 @@
 #pragma once
 #include <unordered_map>
-#include <exception>
+#include <stdexcept>
 #include <chrono>
 #include <thread>
 #include <algorithm>
 #include <mutex>
+#include <atomic>
 
 template < typename Key, typename Value>
 class Cache
 {
 public:
 	Cache(size_t maxSize);
-	Cache() = default;
+	Cache();
 	~Cache();
 	void Put(const Key& key, const Value& value, size_t ttlInMs = 15000);
 	const Value& Get(const Key& key);
@@ -33,11 +34,13 @@ private:
 	const size_t maxSize_ = 64;
 	std::thread thread_;
 	std::mutex mutex_;
+	std::atomic<bool> running_{ true };
 };
 
 template<typename Key, typename Value>
 inline Cache<Key, Value>::~Cache()
 {
+	running_.store(false);
 	if (thread_.joinable())
 	{
 		thread_.join();
@@ -64,13 +67,19 @@ inline Cache<Key, Value>::Cache(size_t maxSize) :
 }
 
 template<typename Key, typename Value>
+inline Cache<Key, Value>::Cache()
+{
+	thread_ = std::thread(&Cache<Key, Value>::CleanupExpiredItems, this);
+}
+
+template<typename Key, typename Value>
 inline const Value& Cache<Key, Value>::Get(const Key& key)
 {
 	std::unique_lock<std::mutex> lock(mutex_);
 	auto it = data_.find(key);
 	if (it == data_.end())
 	{
-		throw std::exception("Key not found in cache");
+		throw std::out_of_range("Key not found in cache");
 	}
 	it->second.UpdateTimestamp();
 	return it->second.value;
@@ -104,7 +113,7 @@ inline void Cache<Key, Value>::RemoveOldestValue()
 template<typename Key, typename Value>
 inline void Cache<Key, Value>::CleanupExpiredItems()
 {
-	while (true)
+	while (running_.load())
 	{
 		auto now = std::chrono::steady_clock::now();
 		std::unique_lock<std::mutex> lock(mutex_);
