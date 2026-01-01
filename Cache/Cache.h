@@ -15,7 +15,7 @@ public:
 	Cache();
 	~Cache();
 	void Put(const Key& key, const Value& value, size_t ttlInMs = 15000);
-	const Value& Get(const Key& key);
+	Value Get(const Key& key);
 	bool Contains(const Key& key) const;
 private:
 	struct CacheItem
@@ -33,7 +33,7 @@ private:
 	std::unordered_map<Key, CacheItem> data_;
 	const size_t maxSize_ = 64;
 	std::thread thread_;
-	std::mutex mutex_;
+	mutable std::mutex mutex_;
 	std::atomic<bool> running_{ true };
 };
 
@@ -73,7 +73,7 @@ inline Cache<Key, Value>::Cache()
 }
 
 template<typename Key, typename Value>
-inline const Value& Cache<Key, Value>::Get(const Key& key)
+inline Value Cache<Key, Value>::Get(const Key& key)
 {
 	std::unique_lock<std::mutex> lock(mutex_);
 	auto it = data_.find(key);
