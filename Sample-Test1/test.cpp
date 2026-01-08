@@ -1,9 +1,22 @@
 #include "Cache.h"
 #include <gtest/gtest.h>
+/*#include <gmock/gmock.h>
 
-TEST(CacheTest, PutOneItemContainsTrueGetTrue)
+class TimeProviderMock : public ITimeProvider
 {
-	Cache<std::string, std::string> cache(2);
+public:
+	MOCK_METHOD(bool, Tick, (), (override));
+	MOCK_METHOD(std::chrono::time_point<std::chrono::steady_clock>, Now, (), (override));
+};*/
+
+class CacheTest : public ::testing::Test {
+protected:
+	TimeProvider timeProvider_;
+};
+
+TEST_F(CacheTest, PutOneItemContainsTrueGetTrue)
+{
+	Cache<std::string, std::string> cache(2, timeProvider_);
 	cache.Put("key1", "value1");
 	EXPECT_TRUE(cache.Contains("key1"));
 
@@ -11,9 +24,9 @@ TEST(CacheTest, PutOneItemContainsTrueGetTrue)
 	EXPECT_EQ(value, "value1");
 }
 
-TEST(CacheTest, PutOneItemContainsFalseGetTrue)
+TEST_F(CacheTest, PutOneItemContainsFalseGetTrue)
 {
-	Cache<std::string, std::string> cache(2);
+	Cache<std::string, std::string> cache(2, timeProvider_);
 	cache.Put("key1", "value1");
 	EXPECT_FALSE(cache.Contains("key"));
 
@@ -21,9 +34,9 @@ TEST(CacheTest, PutOneItemContainsFalseGetTrue)
 	EXPECT_EQ(value, "value1");
 }
 
-TEST(CacheTest, PutOneItemContainsTrueGetFalse)
+TEST_F(CacheTest, PutOneItemContainsTrueGetFalse)
 {
-	Cache<std::string, std::string> cache(2);
+	Cache<std::string, std::string> cache(2, timeProvider_);
 	cache.Put("key1", "value1");
 	EXPECT_TRUE(cache.Contains("key1"));
 
@@ -31,9 +44,9 @@ TEST(CacheTest, PutOneItemContainsTrueGetFalse)
 	EXPECT_FALSE(value == "value");
 }
 
-TEST(CacheTest, PutOneItemContainsFalseGetFalse)
+TEST_F(CacheTest, PutOneItemContainsFalseGetFalse)
 {
-	Cache<std::string, std::string> cache(2);
+	Cache<std::string, std::string> cache(2, timeProvider_);
 	cache.Put("key1", "value1");
 	EXPECT_FALSE(cache.Contains("key2"));
 
@@ -41,9 +54,17 @@ TEST(CacheTest, PutOneItemContainsFalseGetFalse)
 	EXPECT_FALSE(value == "alue1");
 }
 
-TEST(CacheTest, GivenEmptyCache_WhenGetAndContainsWithKeyAreCalled_ThenGetShouldThrowAndContainsShouldReturnTrue)
+TEST_F(CacheTest, GivenEmptyCache_WhenGetAndContainsWithKeyAreCalled_ThenGetShouldThrowAndContainsShouldReturnFalse)
 {
-	Cache<int, std::string> cache(2);
+	Cache<int, std::string> cache(2, timeProvider_);
 	EXPECT_THROW(cache.Get(42), std::out_of_range);
 	EXPECT_FALSE(cache.Contains(42));
+}
+
+TEST_F(CacheTest, Test)
+{
+	Cache<int, std::string> cache(3, timeProvider_);
+	cache.Put(1, "one", 1);
+	cache.Put(2, "two", 2000);
+
 }

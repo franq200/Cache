@@ -19,7 +19,8 @@ cleanup() [robiony poza u¿ytkownikiem]*/
 
 int main() 
 {
-	Cache<std::string, std::string> cache(3);
+	TimeProvider timeProvider;
+	Cache<std::string, std::string> cache(3,timeProvider);
 	cache.Put("key1", "value1", 5000); // TTL 5 seconds
 	return 0;
 }
