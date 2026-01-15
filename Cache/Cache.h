@@ -85,7 +85,7 @@ template<typename Key, typename Value>
 inline void Cache<Key, Value>::Put(const Key& key, const Value& value, size_t ttlInMs)
 {
 	std::unique_lock<std::mutex> lock(mutex_);
-	auto now = std::chrono::steady_clock::now();
+	auto now = timeProvider_.Now();
 	data_.try_emplace(key, CacheItem{ value, now, now + std::chrono::milliseconds(ttlInMs) });
 	if (data_.size() > maxSize_)
 	{
