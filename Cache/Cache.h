@@ -11,6 +11,7 @@ class ITimeProvider
 {
 public:
 	bool virtual Tick() = 0;
+	virtual ~ITimeProvider() = default;
 	virtual std::chrono::time_point<std::chrono::steady_clock> Now() = 0;
 };
 
