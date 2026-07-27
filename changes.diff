@@ -1,0 +1,161 @@
+diff --git a/Cache/Cache.h b/Cache/Cache.h
+index ca8826e..23c9dc1 100644
+--- a/Cache/Cache.h
++++ b/Cache/Cache.h
+@@ -6,6 +6,7 @@
+ #include <algorithm>
+ #include <mutex>
+ #include <atomic>
++#include <iostream>
+ 
+ class ITimeProvider
+ {
+@@ -75,7 +76,11 @@ private:
+ template<typename Key, typename Value>
+ inline Cache<Key, Value>::~Cache()
+ {
+-	running_.store(false);
++	running_ = false;
++
++	if( !cleanupThread_.joinable())
++		std::cout << "Cleanup thread is not joinable." << std::endl;
++
+ 	if (cleanupThread_.joinable())
+ 	{
+ 		cleanupThread_.join();
+@@ -154,7 +159,6 @@ inline void Cache<Key, Value>::CleanupExpiredItems()
+ 		if (timeProvider_.Tick())
+ 		{
+ 			auto now = timeProvider_.Now();
+-
+ 			std::unique_lock<std::mutex> lock(mutex_);
+ 			for (auto it = data_.begin(); it != data_.end();)
+ 			{
+diff --git a/Sample-Test1/Sample-Test1.vcxproj.user b/Sample-Test1/Sample-Test1.vcxproj.user
+index 88a5509..8e2bea3 100644
+--- a/Sample-Test1/Sample-Test1.vcxproj.user
++++ b/Sample-Test1/Sample-Test1.vcxproj.user
+@@ -1,4 +1,8 @@
+ ﻿<?xml version="1.0" encoding="utf-8"?>
+ <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+-  <PropertyGroup />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <LocalDebuggerCommandArguments>--gtest_repeat=1</LocalDebuggerCommandArguments>
++    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
++    <LocalDebuggerCommandArgumentsHistory>--gtest_repeat=5|--gtest_repeat=5000|--gtest_repeat=50|--gtest_repeat=1000|--gtest_repeat=1|</LocalDebuggerCommandArgumentsHistory>
++  </PropertyGroup>
+ </Project>
+\ No newline at end of file
+diff --git a/Sample-Test1/test.cpp b/Sample-Test1/test.cpp
+index 91671b8..25ea127 100644
+--- a/Sample-Test1/test.cpp
++++ b/Sample-Test1/test.cpp
+@@ -16,7 +16,7 @@ public:
+ 
+ class CacheTest : public ::testing::Test {
+ protected:
+-	TimeProviderMock timeProvider_;
++	::testing::StrictMock<TimeProviderMock> timeProvider_;
+ };
+ 
+ TEST_F(CacheTest, PutOneItemContainsTrueGetTrue)
+@@ -86,47 +86,72 @@ TEST_F(CacheTest, WhenTickReturnsFalse_ItemsAreNotRemoved)
+ {
+ 	auto now = std::chrono::steady_clock::now();
+ 	auto future = now + std::chrono::milliseconds(5000);
+-
+-	EXPECT_CALL(timeProvider_, Tick())
+-		.WillRepeatedly(::testing::Return(false));
++	bool exit = false;
+ 
+ 	EXPECT_CALL(timeProvider_, Now())
+ 		.WillRepeatedly(::testing::Return(future));
+ 
++	EXPECT_CALL(timeProvider_, Tick()).WillRepeatedly([&] {
++		exit = true;
++		return false;
++	});
++
+ 	Cache<int, std::string> cache(5, timeProvider_);
+ 
+ 	cache.Put(1, "one", 1000);
+ 
+-	std::this_thread::sleep_for(std::chrono::milliseconds(50));
++	while (exit == false);
+ 
+ 	EXPECT_TRUE(cache.Contains(1));
+ }
+ 
+ TEST_F(CacheTest, WhenMultipleItemsExpire_AllAreRemoved)
+ {
+-	auto now = std::chrono::steady_clock::now();
+-	auto expired = now + std::chrono::milliseconds(3000);
+-
+-	EXPECT_CALL(timeProvider_, Tick())
+-		.WillRepeatedly(::testing::Return(true));
+-
+-	EXPECT_CALL(timeProvider_, Now())
+-		.WillOnce(::testing::Return(now))
+-		.WillOnce(::testing::Return(now))
+-		.WillOnce(::testing::Return(now))
+-		.WillRepeatedly(::testing::Return(expired));
+-
+-	Cache<int, std::string> cache(5, timeProvider_);
+-
+-	cache.Put(1, "one", 1000);
+-	cache.Put(2, "two", 1000);
+-	cache.Put(3, "three", 1000);
+-
+-	std::this_thread::sleep_for(std::chrono::milliseconds(50));
+-
+-	EXPECT_FALSE(cache.Contains(1));
+-	EXPECT_FALSE(cache.Contains(2));
+-	EXPECT_FALSE(cache.Contains(3));
++		auto now = std::chrono::steady_clock::now();
++		auto expired = now + std::chrono::milliseconds(3000);
++		std::atomic<bool> cacheFulfilled = false;
++		std::atomic<bool> exit = false;
++		int cnt = 0;
++		Cache<int, std::string> cache(5, timeProvider_);
++
++		ON_CALL(timeProvider_, Tick()).WillByDefault([&cacheFulfilled, &cnt, &exit] {
++			if (cacheFulfilled)
++			{
++				if (cnt > 0)
++					exit = true;
++
++				cnt++;
++				return true;
++			}
++			else
++			{
++				return false;
++			}
++		});
++
++		EXPECT_CALL(timeProvider_, Now())
++			.WillOnce(::testing::Return(now))
++			.WillOnce(::testing::Return(now))
++			.WillOnce(::testing::Return(now))
++			.WillRepeatedly(::testing::Return(expired));
++
++
++
++		cache.Put(1, "one", 1000);
++		cache.Put(2, "two", 1000);
++		cache.Put(3, "three", 1000);
++		cacheFulfilled = true;
++
++		while (exit == false);
++
++		if (cache.Contains(1) || cache.Contains(2) || cache.Contains(3))
++		{
++			std::cout << "Cache still contains items after expiration." << std::endl;
++		}
++
++		EXPECT_FALSE(cache.Contains(1));
++		EXPECT_FALSE(cache.Contains(2));
++		EXPECT_FALSE(cache.Contains(3));
+ }
+ 
+ TEST_F(CacheTest, WhenCacheExceedsMaxSize_OldestItemIsRemoved)

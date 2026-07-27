@@ -16,7 +16,7 @@ public:
 
 class CacheTest : public ::testing::Test {
 protected:
-	TimeProviderMock timeProvider_;
+	::testing::StrictMock<TimeProviderMock> timeProvider_;
 };
 
 TEST_F(CacheTest, PutOneItemContainsTrueGetTrue)
@@ -86,47 +86,72 @@ TEST_F(CacheTest, WhenTickReturnsFalse_ItemsAreNotRemoved)
 {
 	auto now = std::chrono::steady_clock::now();
 	auto future = now + std::chrono::milliseconds(5000);
-
-	EXPECT_CALL(timeProvider_, Tick())
-		.WillRepeatedly(::testing::Return(false));
+	bool exit = false;
 
 	EXPECT_CALL(timeProvider_, Now())
 		.WillRepeatedly(::testing::Return(future));
+
+	EXPECT_CALL(timeProvider_, Tick()).WillRepeatedly([&] {
+		exit = true;
+		return false;
+	});
 
 	Cache<int, std::string> cache(5, timeProvider_);
 
 	cache.Put(1, "one", 1000);
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	while (exit == false);
 
 	EXPECT_TRUE(cache.Contains(1));
 }
 
 TEST_F(CacheTest, WhenMultipleItemsExpire_AllAreRemoved)
 {
-	auto now = std::chrono::steady_clock::now();
-	auto expired = now + std::chrono::milliseconds(3000);
+		auto now = std::chrono::steady_clock::now();
+		auto expired = now + std::chrono::milliseconds(3000);
+		std::atomic<bool> cacheFulfilled = false;
+		std::atomic<bool> exit = false;
+		int cnt = 0;
+		Cache<int, std::string> cache(5, timeProvider_);
 
-	EXPECT_CALL(timeProvider_, Tick())
-		.WillRepeatedly(::testing::Return(true));
+		ON_CALL(timeProvider_, Tick()).WillByDefault([&cacheFulfilled, &cnt, &exit] {
+			if (cacheFulfilled)
+			{
+				if (cnt > 0)
+					exit = true;
 
-	EXPECT_CALL(timeProvider_, Now())
-		.WillOnce(::testing::Return(now))
-		.WillOnce(::testing::Return(now))
-		.WillOnce(::testing::Return(now))
-		.WillRepeatedly(::testing::Return(expired));
+				cnt++;
+				return true;
+			}
+			else
+			{
+				return false;
+			}
+		});
 
-	Cache<int, std::string> cache(5, timeProvider_);
+		EXPECT_CALL(timeProvider_, Now())
+			.WillOnce(::testing::Return(now))
+			.WillOnce(::testing::Return(now))
+			.WillOnce(::testing::Return(now))
+			.WillRepeatedly(::testing::Return(expired));
 
-	cache.Put(1, "one", 1000);
-	cache.Put(2, "two", 1000);
-	cache.Put(3, "three", 1000);
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-	EXPECT_FALSE(cache.Contains(1));
-	EXPECT_FALSE(cache.Contains(2));
-	EXPECT_FALSE(cache.Contains(3));
+		cache.Put(1, "one", 1000);
+		cache.Put(2, "two", 1000);
+		cache.Put(3, "three", 1000);
+		cacheFulfilled = true;
+
+		while (exit == false);
+
+		if (cache.Contains(1) || cache.Contains(2) || cache.Contains(3))
+		{
+			std::cout << "Cache still contains items after expiration." << std::endl;
+		}
+
+		EXPECT_FALSE(cache.Contains(1));
+		EXPECT_FALSE(cache.Contains(2));
+		EXPECT_FALSE(cache.Contains(3));
 }
 
 TEST_F(CacheTest, WhenCacheExceedsMaxSize_OldestItemIsRemoved)

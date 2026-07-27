@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <mutex>
 #include <atomic>
+#include <iostream>
 
 class ITimeProvider
 {
@@ -75,7 +76,11 @@ private:
 template<typename Key, typename Value>
 inline Cache<Key, Value>::~Cache()
 {
-	running_.store(false);
+	running_ = false;
+
+	if( !cleanupThread_.joinable())
+		std::cout << "Cleanup thread is not joinable." << std::endl;
+
 	if (cleanupThread_.joinable())
 	{
 		cleanupThread_.join();
@@ -154,7 +159,6 @@ inline void Cache<Key, Value>::CleanupExpiredItems()
 		if (timeProvider_.Tick())
 		{
 			auto now = timeProvider_.Now();
-
 			std::unique_lock<std::mutex> lock(mutex_);
 			for (auto it = data_.begin(); it != data_.end();)
 			{
